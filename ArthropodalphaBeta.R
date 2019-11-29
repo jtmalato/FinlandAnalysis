@@ -1,19 +1,28 @@
-# Header ----
-
 # Name: Rui Miguel Carvalho
 # Date of creation: 10/13/2012
 # Date of last update: 
-# 
-# 
 
-# Index --------------------
+
+# Index ---------------------------------------------------
+
+# Datasets utilizados:
+#   1.  GLMM_Variables.csv       - data.variables
+#   2.  Control250_Fin.csv       - data.alpha.controls
+#   3.  Traits_All_Fin.csv       - data.traits.all.fin
+#   4.  Traits_Nat_Fin.csv       - data.traits.nat.fin
+#   5.  Traits_NInd_Fin.csv      - data.traits.nind.fin
+#   6.  All_Fin.csv              - data.all.fin
+#   7.  Nat_Fin.csv              - data.nat.fin
+#   8.  NInd_Fin.csv             - data.nind.fin
+#   9.  MDS_vectors.csv          - data.mds
+#   10. Weight_Ratios_Traits.csv - data.wr
 
 # CALC COMPLETENESS - Faz as curvas de acumulação para os controlos 250
-#  SETTTING FILES
-#  CALC_COMPLETENESS
-#  CALC_TD_ALPHA
-#  CALC_TD_BETA
-#  CALC_FD_ALPHA
+# SETTTING FILES
+# CALC_COMPLETENESS
+# CALC_TD_ALPHA
+# CALC_TD_BETA
+# CALC_FD_ALPHA
 # CALC_FD_BETA
 # Summing up Alpha values - 162
 # Summing up Beta values - 336
@@ -31,196 +40,235 @@ library(hypervolume)
 library(car)
 library(MASS)
 library(lme4)
-#source(file = "HighstatLibV10.R") #cool tools to support
-#library(factoextra) # Useful for PCA analysis
-library(here)
+# source(file = "HighstatLibV10.R") #cool tools to support
+# library(factoextra) # Useful for PCA analysis
+
+# jtm added these packages
+library(here)       # to locate files
+library(data.table) # to work with data
+library(dplyr)      # to manage data
+library(magrittr)   # to use the pipe operator %>% 
 
 
-# Load files --------------------
+# Load files ----------------------------------------------
 
-#Ficheiro com as variável de distâncias com edge, trilhos e etc - para o GLMM
+# 1. data.variables ----------------------
+# Ficheiro com as variável de distâncias com edge, trilhos e etc - para o GLMM
 
-Variables <- read.csv2(here("GLMM_Variables.csv"), row.names=1, header=TRUE,  stringsAsFactors = T, dec = ".")
-Variables$Dist_trail <- as.numeric(Variables$Dist_trail)
-Variables$Dist_edge <- as.numeric(Variables$Dist_edge)
-Variables$Dist_trail_beginning <- as.numeric(Variables$Dist_trail_beginning)
-str(Variables)
+data.variables <- fread(here("data", "GLMM_Variables.csv"), stringsAsFactors = T)
+colnames(data.variables)
+str(data.variables)
+summary(data.variables)
+# first look at the data.variables dataset
+barplot(table(data.variables$ForestID), las=2, main="Forest ID", ylab="Frequency")
+barplot(table(data.variables$Treatment), las=2, main="Treatment", ylab="Frequency")
 
-# Ficheiro com as abundâncias por amostra para os controlos 250/Max.
-Alpha_controls <- read.csv2(here("Control250_Fin.csv"), header=TRUE,  stringsAsFactors = T, dec = ".")
-str(Alpha_controls)
+# 2. data.alpha.controls -----------------
+# Ficheiro com as abundâncias por amostra para os controlos 250/Max
+data.alpha.controls <- fread(here("data", "Control250_Fin.csv"), header = T)
+# change column name and transform in in a factor
+setnames(data.alpha.controls, old="Trail_Sampling Area", new="TSA")
+data.alpha.controls[, TSA:=factor(TSA)]
+summary(data.alpha.controls)
 
 
+# 3. data.traits.all.fin -----------------
 # Matrix with species (rows)x traits (cols) for all species in all plots
+data.traits.all.fin  <- read.csv2(here("data", "Traits_All_Fin.csv"), header=TRUE, dec=".")
+setDT(data.traits.all.fin)
+# edit data.traits.all.fin colnames
+setnames(data.traits.all.fin,
+         old = c("MF","SPECIES","FAMILY","FAMILY.1","N.E.I","IND.NONNAIND","HABITATNALeaves..branches..flowers..seeds..fruits..surface.","HABITATNAinside.stems..roots..fruits..pods..fungi","HABITATNAGround","HABITATNAUnder.stones..bark..twigs","HABITATNADecaying.matter","HABITATNASubterranean","Stenophagous...Not.Euryphagous"),
+         new = c("Mf","Sp","Family.name","Family","Nei","Ind.nonind","Hab.leaves","Hab.inside","Hab.ground","Hab.under","Hab.matter","Hab.sub","Stenophagous"))
+data.traits.all.fin
+# data.traits.all.fin <- data.traits.all.fin[,c(1:3)]
+str(data.traits.all.fin) # as colunas Hab. poderao ser factores 0/1
+pairs(data.traits.all.fin[,c(13:18)]) # all same data, might justify the positive pattern
+pairs(data.traits.all.fin[,c(19:21)], pch=16)
 
 
-Traits  <- read.csv2(here("Traits_All_Fin.csv"), row.names=1, header=TRUE,  stringsAsFactors = T, dec = ".")
-Traits <- Traits[,-c(1:3)] 
-str(Traits)
-
-
+# 4. data.traits.nat.fin -----------------
 # Matrix with species (rows)x traits (cols) for all natives species in all plots
+data.traits.nat.fin <- read.csv2(here("data", "Traits_Nat_Fin.csv"), header=TRUE, dec=".")
+setDT(data.traits.nat.fin)
+colnames(data.traits.nat.fin)
+setnames(data.traits.nat.fin,
+         old = c("MF","SPECIES","FAMILY","FAMILY.1","N.E.I","IND.NONNAIND","HABITATNALeaves..branches..flowers..seeds..fruits..surface.","HABITATNAinside.stems..roots..fruits..pods..fungi","HABITATNAGround","HABITATNAUnder.stones..bark..twigs","HABITATNADecaying.matter","HABITATNASubterranean","Stenophagous...Not.Euryphagous"),
+         new = c("Mf","Sp","Family.name","Family","Nei","Ind.nonind","Hab.leaves","Hab.inside","Hab.ground","Hab.under","Hab.matter","Hab.sub","Stenophagous"))
+# mudar os valores de "E " para "E" (sem espaco)
+levels(data.traits.nat.fin$Nei) <- c("E", "N")
+# ver a estrutura da coluna
+as.character(data.traits.nat.fin$Nei)
+# estrutura dos dados
+str(data.traits.nat.fin)
 
-Traits  <- read.csv2(here("Traits_Nat_Fin.csv"), row.names=1, header=TRUE,  stringsAsFactors = T, dec = ".")
-Traits <- Traits[,-c(1:3)] 
-str(Traits)
 
+# 5. data.traits.nind.fin ----------------
 # Matrix with species (rows)x traits (cols) for all Non-Indigenous species in all plots
+data.traits.nind.fin  <- read.csv2(here("data", "Traits_NInd_Fin.csv"), header=TRUE, dec = ".")
+setDT(data.traits.nind.fin)
+colnames(data.traits.nind.fin)
+setnames(data.traits.nind.fin,
+         old = c("MF","SPECIES","FAMILY","FAMILY.1","N.E.I","IND.NONNAIND","HABITATNALeaves..branches..flowers..seeds..fruits..surface.","HABITATNAinside.stems..roots..fruits..pods..fungi","HABITATNAGround","HABITATNAUnder.stones..bark..twigs","HABITATNADecaying.matter","HABITATNASubterranean","Stenophagous...Not.Euryphagous"),
+         new = c("Mf","Sp","Family.name","Family","Nei","Ind.nonind","Hab.leaves","Hab.inside","Hab.ground","Hab.under","Hab.matter","Hab.sub","Stenophagous"))
+str(data.traits.nind.fin)
+summary(data.traits.nind.fin) # há duas linhas NA
 
-Traits  <- read.csv2(here("Traits_NInd_Fin.csv"), row.names=1, header=TRUE,  stringsAsFactors = T, dec = ".")
-Traits <- Traits[,-c(1:3)] 
-str(Traits)
 
-
+# 6. data.all.fin ------------------------
 # Ficheiro com as abundâncias por Área de amostragem, para todas as amostras
-SAAll <- read.csv2(here("All_Fin.csv"))
-sites <- SAAll[,1]
-SAAll <- SAAll[,-1] 
-rownames(SAAll) <- sites
-colnames(SAAll) <- species
-# HEllinger transformation
-SAAll <- decostand(SAAll, "hellinger") 
-SAAll
+SAAll <- fread(here("data", "All_Fin.csv"), header = T) %>% 
+  setnames(old="Trail_Sampling Area", new="TSA")
+sites <- as.vector(SAAll$TSA)
+# SAAll <- SAAll[,-1]
+# rownames(SAAll) <- sites
+# colnames(SAAll) <- species
 
+# HEllinger transformation
+SAAll.standard <- decostand(SAAll[,-1], "hellinger")
+SAAll.standard
+
+
+# 7. data.nat.fin ------------------------
 # Ficheiro com as abundâncias por área de amostragem, para as espécies indígenas
-
-SANat <- read.csv2(here("Nat_Fin.csv"))
-sites <- SANat[,1]
-SANat <- SANat[,-1] 
-rownames(SANat) <- sites
-colnames(SANat) <- species_nat
+SANat <- fread(here("data", "Nat_Fin.csv"), header = T) %>% 
+  setnames(old="Trail_Sampling Area", new="TSA")
+# sites are the same as the previous object
+# SANat <- SANat[,-1] 
+# rownames(SANat) <- sites
+# colnames(SANat) <- species_nat
 # HEllinger transformation
-SANat <- decostand(SANat, "hellinger") 
-SANat
+SANat.standard <- decostand(SANat[,-1], "hellinger") 
+SANat.standard
 
+
+# 8. data.nind.fin -----------------------
 # Ficheiro com as abundâncias por área de amostragem, para as espécies não-indígenas
-SANInd <- read.csv2(here("NInd_Fin.csv"))
-sites <- SANInd[,1]
-SANInd <- SANInd[,-1] 
-rownames(SANInd) <- sites
-colnames(SANInd) <- species_nind
-
+SANInd <- fread(here("data", "NInd_Fin.csv"), header = T) %>% 
+  setnames(old="Trail_Sampling Area", new="TSA")
+# SANInd <- SANInd[,-1] 
+# rownames(SANInd) <- sites
+# colnames(SANInd) <- species_nind
 # HEllinger transformation
-SANInd <- decostand(SANInd, "hellinger") 
-SANInd
+SANInd.standard <- decostand(SANInd[,-1], "hellinger") 
+SANInd.standard
 
+
+# 9. data.mds ----------------------------
 # Vector with weight trail and treatment names for MDS
-MDSfile <- read.csv2(here("MDS_vectors.csv"))
-trail <- MDSfile[,1]
-trail
-trail <- as.vector(trail)
-treatment <- MDSfile[,2]
-str(treatment)
-treatment <- as.vector(treatment)
-str(treatment)
+data.mds <- fread(here("data", "MDS_vectors.csv"))
+trail <- unique(as.vector(data.mds$Trail_name))
+str(data.mds)
 
+
+# 10. data.wr -----------------------------
 # Vector with weight ratios for trails - used in cluster::daisy to compensate decomposition of one variable by
 # multiple columns
-Weightsfile <- read.csv2("Weight_Ratios_Traits.csv", header = TRUE, dec=".")
-weights <- Weightsfile[,-c(1:4)]
-weights <- as.vector(weights)
+data.wr <- read.csv2(here("data", "Weight_Ratios_Traits.csv"), header = TRUE, dec = ".")
+setDT(data.wr)
+colnames(data.wr)
+setnames(data.wr,
+         old=c("MF","SPECIES","FAMILY","FAMILY.1","N.E.I","IND.NON.IND","HABITAT.Leaves..branches..flowers..seeds..fruits..surface.","HABITAT.inside.stems..roots..fruits..pods..fungi","HABITAT.Ground","HABITAT.Under.stones..bark..twigs","HABITAT.Decaying.matter","HABITAT.Subterranean","Stenophagous...Not.Euryphagous"),
+         new=c("Mf","Sp","Family.name","Family","Nei","Ind.nonind","Hab.leaves","Hab.inside","Hab.ground","Hab.under","Hab.matter","Hab.sub","Stenophagous"))
+# colnames(data.wr)
+# weights <- data.wr[,-c(1:4)]
+# weights <- as.vector(data.wr)
+
 
 # Looking into the datasets -------------------------------
 
-# Ver as estruturas dos dados (garantir os factors e os valores numericos)
-str(Variables)
-str(Alpha_controls)
-str(Traits)
-str(TraitsNat)
-str(TraitsNInd)
-str(SAAll)
-str(SANat)
-str(SANInd)
-str(weights)
-str(treatment)
-# CALCULATING COMPLETENESS FOR THE CONTROLS FOR BETA ANALYSYS ----
+# CALCULATING COMPLETENESS FOR THE CONTROLS FOR BETA ANALYSYS -------
+alphaaccumlist <- list()
 
-Alpha_controls <- read.csv2("Control250_Fin.csv", header = TRUE)
+tsa <- levels(data.alpha.controls$TSA)
+# pdf(here("results", "accumCurvesControls.pdf"), width = 10, height = 8)
+par(mfrow = c(2, 2))
+for(i in seq_along(tsa)) {
+  
+  # definir a matriz a analisar
+  data.alpha.controls.matrix <- data.alpha.controls[which(data.alpha.controls$TSA == tsa[i]), -1]
+  alphaaccumlist[[i]] <- alpha.accum(data.alpha.controls.matrix, prog = F)
 
-alphaaccumlist <-list()
-alphaaccumlist
-plotlist <- list()
-par(mfrow=c(2,3))
-pdf('AccumCurvesControls.pdf')
-for(i in unique(Alpha_controls[,"Trail_Sampling.Area"])){
-  Alpha_controlsMatrix <- Alpha_controls[Alpha_controls[,"Trail_Sampling.Area"]== i, -1]  #definir a matriz a analisar
-  alphaaccumlist[[i]] <- (alpha.accum(Alpha_controlsMatrix))
-  alphaaccumlist[[i]]
-  
-  #plot(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,2], xlab="Samples", ylab="Individuals", )
-  plot(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,3], xlab="Samples", ylab="Individuals", 
-       ylim=c(0,50), main = i, col="blue", type = "p")
-  
-  lines(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,4])
-  lines(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,5], col="yellow")
-  lines(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,8], col="red")
-  lines(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,13], col="red", type = "p")
-  lines(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,17], col="green")
-  lines(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,19], col="green", type = "p")
+  # plot(alphaaccumlist[[i]][,1], alphaaccumlist[[i]][,2], xlab="Samples", ylab="Individuals", )
+  plot(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 3], xlab = "Samples", ylab = "Individuals",
+       ylim = c(0,40), xlim = c(0,25), main = tsa[i], las =1, type="n")
+  lines(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 4], col="gray30", lwd=2)
+  lines(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 5], col = "#C8631B", lwd=2)
+  lines(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 8], col = "#BF020A", lwd=2)
+  lines(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 17], col = "#0ABF02", lwd=2)
+  points(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 3], pch=21, bg = "#1B80C8", cex=1.2)
+  points(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 13], pch=21, bg = "#BF020A", cex=1.2)
+  points(alphaaccumlist[[i]][, 1], alphaaccumlist[[i]][, 19], pch=21, bg = "#0ABF02", cex=1.2)
 }
-dev.off()
+# dev.off()
 
-#CALC_COMPLETENESS ----
+
+# CALC_COMPLETENESS -----
 
 # Quero usar o fichero dos contrlos para calcular os estimadores, e daí obter completeness.
-sitescontr <- Alpha_controls[,1]
-species_contr <- Alpha_controls[,1]
-rownames(Alpha_controls) <-sitescontr
-colnames(Alpha_controls) <- species_contr
-Alpha_controls <- Alpha_controls[,-1]
-alpha.estimate(Alpha_controls)
+# rownames(data.alpha.controls) <-tsa
+# colnames(data.alpha.controls) <- tsa
+# data.alpha.controls <- data.alpha.controls[,-1]
+alpha.estimate(data.alpha.controls[,-1])
 
 
+# Calculating functional elements -----
 
-###   Calculating functional elements ----
+# All species tree and FD Alpha
+# Calculating distances between species
+dissimAll <- cluster::daisy(data.traits.all.fin, metric = "gower", weights = data.wr)
+# https://www.rdocumentation.org/packages/cluster/versions/2.0.7-1/topics/daisy
 
-## All species tree and FD Alpha
-dissimAll <- cluster::daisy(Traits, "gower", weights = weights)  # Calculating distances between species
-#      https://www.rdocumentation.org/packages/cluster/versions/2.0.7-1/topics/daisy
+# o warning diz que estas colunas binarias vao ser tratadas como um scaled interval
+# data.traits.all.fin[, c(7, 9, 10, 11, 12,22, 24, 26, 27, 28, 29, 31, 31)]
 
 
-tree <- hclust(dissimAll, "average")     
-par(mfrow=c(1,1))
-dev.copy(device = jpeg, filename = 'Tree.jpeg', width = 1000, height = 500)
-plot(tree, hang = -1)  ## PQ O HANG= - 1?
-dev.off()
-#plot(as.dendrogram(tree))
+treeAll <- hclust(dissimAll, "average")
+# pdf(here("results", "dissimAll.dendrogram.pdf"), width = 10, height = 8)
+par(mfrow=c(1,1), mar=c(1, 4, 3, 1))
+plot(treeAll, hang = -1, las=1, xlab="", main="Dendrogram of \nAll_Fin Species")
+# dev.off()
+# plot(as.dendrogram(tree))
 
-# sdfjskdfjhskdjf ----
-# All natives tree and FD Alpha----
-dissimNat <- cluster::daisy(TraitsNat, "gower", weights = weights)  # Calculating distances between species
-treeNat <- hclust(dissimNat, "average")          # building the dendrogrma
 
+# All natives tree and FD Alpha ----
+# Calculating distances between species
+dissimNat <- cluster::daisy(data.traits.nat.fin, "gower", weights = data.wr)
+treeNat <- hclust(dissimNat, "average") # building the dendrogrma
 cor(dissimNat, cophenetic(treeNat))
 
-par(mfrow=c(1,1))
-dev.copy(device = jpeg, filename = 'TreeNat.jpeg', width = 1000, height = 500)
-plot(treeNat, hang = -1)  ## PQ O HANG= - 1?
-dev.off()
-#  plot(as.dendrogram(treeNat))
-str(TraitsNInd)
+# pdf(here("results", "dissimNat.dendrogram.pdf"), width = 10, height = 8)
+par(mfrow=c(1,1), mar=c(1, 4, 5, 1))
+plot(treeNat, hang = -1, las=1, xlab="", main="Dendrogram of \nNat_Fin Species")
+# dev.off()
+# plot(as.dendrogram(treeNat))
+
 
 # All Non-Ind tree and FD Alpha ----
-dissimNInd <- cluster::daisy(TraitsNInd, "gower", weights = weights)  # Calculating distances between species
-treeNInd <- hclust(dissimNInd, "average")          # building the 
-par(mfrow=c(1,1))
-dev.copy(device = jpeg, filename = 'TreeNInd.jpeg', width = 1000, height = 500)
-plot(treeNInd, hang = -1)  ## PQ O HANG= - 1?
-dev.off()
+# Calculating distances between species
+dissimNInd <- cluster::daisy(data.traits.nind.fin, "gower", weights = data.wr)
+treeNInd <- hclust(dissimNInd, "average")
+# pdf(here("results", "dissimNInd.dendrogram.pdf"), width = 10, height = 8)
+par(mfrow=c(1,1), mar=c(1, 4, 5, 1))
+plot(treeNInd, hang = -1, las=1, xlab="", main="Dendrogram of \nNInd_Fin Species")
+# dev.off()
+# plot(as.dendrogram(treeNInd))
+
 
 # ALPHAs for All species, Natives and Non-Indigenous ----
 
-#Taxonomical Alpha
-Alpha_All <- alpha(SAAll)
-Alpha_Nat<- alpha(SANat)
-Alpha_NInd<- alpha(SANInd)
+# Taxonomical Alpha
+alpha.All  <- alpha(SAAll[,-1])
+alpha.Nat  <- alpha(SANat[, -1])
+alpha.NInd <- alpha(SANInd[, -1])
 
-#Functional Alpha
-FDalphaAll <- alpha(SAAll, tree)
-FDalphaNat <- alpha(SANat, treeNat)
-FDalphaNInd <- alpha(SANInd, treeNInd)
+# Functional Alpha
+# Functional Alpha All devolve um erro!!
+FDalpha.All  <- alpha(SAAll[,-1], treeAll)
+FDalpha.Nat  <- alpha(SANat[,-1], treeNat)
+FDalpha.NInd <- alpha(SANInd[,-1], treeNInd)
 
-Alphas <- as.data.frame(cbind(Alpha_All, Alpha_Nat, Alpha_NInd, FDalphaAll, FDalphaNat, FDalphaNInd))
+alphas <- data.table(alpha.All=alpha.All, alpha.Nat=alpha.Nat, alpha.NInd=alpha.NInd, FDalpha.All=NA, FDalpha.Nat=FDalpha.Nat, FDalpha.NInd=FDalpha.NInd)
 colnames(Alphas) <- cbind("TAlphaAll", "TAlphaNat", "TAlphaNInd","FAlphaAll", "FAlphaNat", "FAlphaNInd" )
 Alphas # Will be printed along with BETAS in the RESULTS file
 
@@ -228,37 +276,38 @@ Alphas # Will be printed along with BETAS in the RESULTS file
 # Beta results come as a list (class(BetaAll) = list), so we transform them into data frame to export them into csv
 
 # Taxonomical Beta
-BetaAll <- beta(SAAll)
-BetaNat <- beta(SANat)
-BetaNat <- beta(SANInd) 
+beta.All <- beta(SAAll[,-1])
+beta.Nat <- beta(SANat[,-1])
+beta.Nat <- beta(SANInd[,-1])
 
-#Functional Beta
-BetaFuncAll <- beta(SAAll, tree, abund =  T)
-BetaFuncNat <- beta(SANat, treeNat, abund = T) 
-BetaFuncNInd <- beta(SANInd, treeNInd, abund= T)
+# Functional Beta
+# Functional beta All devolve um erro 
+betaFunc.All <- beta(SAAll[,-1], treeAll, abund =  T)
+betaFunc.Nat <- beta(SANat[,-1], treeNat, abund = T) 
+betaFunc.NInd <- beta(SANInd[,-1], treeNInd, abund= T)
 
 
 ## Separating Total, Richness and Replacement  TAXONOMICAL betas into different data frames
-BetaAllTotal <- data.frame(as.matrix(BetaAll[["Btotal"]]), sep= "tab")
-BetaAllRich <- data.frame(as.matrix(BetaAll[["Brich"]]), sep= "tab")
-BetaAllRepl <- data.frame(as.matrix(BetaAll[["Brepl"]]), sep= "tab")
-BetaNatTotal <- data.frame(as.matrix(BetaNat[["Btotal"]]), sep= "tab")
-BetaNatRich <- data.frame(as.matrix(BetaNat[["Brich"]]), sep= "tab")
-BetaNatRepl <- data.frame(as.matrix(BetaNat[["Brepl"]]), sep= "tab")
-BetaNIndTotal <- data.frame(as.matrix(BetaNat[["Btotal"]]), sep= "tab")
-BetaNIndRich <- data.frame(as.matrix(BetaNat[["Brich"]]), sep= "tab")
-BetaNIndRepl <- data.frame(as.matrix(BetaNat[["Brepl"]]), sep= "tab")
+BetaAllTotal  <- data.table(as.matrix(beta.All[["Btotal"]]))
+BetaAllRich   <- data.table(as.matrix(beta.All[["Brich"]]))
+BetaAllRepl   <- data.table(as.matrix(beta.All[["Brepl"]]))
+BetaNatTotal  <- data.table(as.matrix(beta.Nat[["Btotal"]]))
+BetaNatRich   <- data.table(as.matrix(beta.Nat[["Brich"]]))
+BetaNatRepl   <- data.table(as.matrix(beta.Nat[["Brepl"]]))
+BetaNIndTotal <- data.table(as.matrix(beta.Nat[["Btotal"]]))
+BetaNIndRich  <- data.table(as.matrix(beta.Nat[["Brich"]]))
+BetaNIndRepl  <- data.table(as.matrix(beta.Nat[["Brepl"]]))
 
 ## Separating Total, Richness and Replacement  FUNCTIONAL betas into different data frames
-BetaFuncAllTotal <- data.frame(as.matrix(BetaFuncAll[["Btotal"]]), sep= "tab")
-BetaFuncAllRich <- data.frame(as.matrix(BetaFuncAll[["Brich"]]), sep= "tab")
-BetaFuncAllRepl <- data.frame(as.matrix(BetaFuncAll[["Brepl"]]), sep= "tab")
-BetaFuncNatTotal <- data.frame(as.matrix(BetaFuncNat[["Btotal"]]), sep= "tab")
-BetaFuncNatRich <- data.frame(as.matrix(BetaFuncNat[["Brich"]]), sep= "tab")
-BetaFuncNatRepl <- data.frame(as.matrix(BetaFuncNat[["Brepl"]]), sep= "tab")
-BetaFuncNIndTotal <- data.frame(as.matrix(BetaFuncNat[["Btotal"]]), sep= "tab")
-BetaFuncNIndRich <- data.frame(as.matrix(BetaFuncNat[["Brich"]]), sep= "tab")
-BetaFuncNIndRepl <- as.data.frame(as.matrix(BetaFuncNat[["Brepl"]]), sep= "tab")
+BetaFuncAllTotal  <- data.table(as.matrix(beta.FuncAll[["Btotal"]]))
+BetaFuncAllRich   <- data.table(as.matrix(beta.FuncAll[["Brich"]]))
+BetaFuncAllRepl   <- data.table(as.matrix(beta.FuncAll[["Brepl"]]))
+BetaFuncNatTotal  <- data.table(as.matrix(betaFunc.Nat[["Btotal"]]))
+BetaFuncNatRich   <- data.table(as.matrix(betaFunc.Nat[["Brich"]]))
+BetaFuncNatRepl   <- data.table(as.matrix(betaFunc.Nat[["Brepl"]]))
+BetaFuncNIndTotal <- data.table(as.matrix(betaFunc.Nat[["Btotal"]]))
+BetaFuncNIndRich  <- data.table(as.matrix(betaFunc.Nat[["Brich"]]))
+BetaFuncNIndRepl  <- data.table(as.matrix(betaFunc.Nat[["Brepl"]]))
 
 # Separating the TAXONOMICAL beta values between the Control 250/Max and the other sampling areas from each trail ----
 
